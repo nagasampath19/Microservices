@@ -13,17 +13,21 @@ using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Logging;
 using Microsoft.OpenApi.Models;
 using PlatformService.Data;
+using PlatformService.SyncDataServices.Http;
 
 namespace PlatformService
 {
     public class Startup
     {
-        public Startup(IConfiguration configuration)
+        public IConfiguration Configuration { get; }
+
+        private readonly IWebHostEnvironment _env;
+
+        public Startup(IConfiguration configuration,IWebHostEnvironment environment)
         {
             Configuration = configuration;
+            _env=environment;
         }
-
-        public IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
         public void ConfigureServices(IServiceCollection services)
@@ -34,11 +38,26 @@ namespace PlatformService
             {
                 c.SwaggerDoc("v1", new OpenApiInfo { Title = "PlatformService", Version = "v1" });
             });
-            services.AddDbContext<AppDBContext>(
+
+             
+            if(_env.IsProduction()){
+                Console.WriteLine("Prod DB-->SQL Server");
+                services.AddDbContext<AppDBContext>(
+                opt=>opt.UseSqlServer(Configuration.GetConnectionString("PlatformsConn"))
+                );
+            }
+            else{
+                Console.WriteLine("Dev DB-->Inmemory");
+                services.AddDbContext<AppDBContext>(
                 opt=>opt.UseInMemoryDatabase("InMem")
-            );
+                );
+            }
+            
+
             services.AddScoped<IPlatformRepo,PlatformRepo>();
+            services.AddHttpClient<ICommandDataClient,HttpCommandDataClient>();
             services.AddAutoMapper(AppDomain.CurrentDomain.GetAssemblies());
+            Console.WriteLine($"command service end point {Configuration["CommandService"]}");
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -51,7 +70,7 @@ namespace PlatformService
                 app.UseSwaggerUI(c => c.SwaggerEndpoint("/swagger/v1/swagger.json", "PlatformService v1"));
             }
 
-            app.UseHttpsRedirection();
+            //app.UseHttpsRedirection();
 
             app.UseRouting();
 
@@ -61,7 +80,7 @@ namespace PlatformService
             {
                 endpoints.MapControllers();
             });
-            PrepData.PrepPopulation(app);
+           PrepData.PrepPopulation(app,_env.IsProduction());
         }
     }
 }
